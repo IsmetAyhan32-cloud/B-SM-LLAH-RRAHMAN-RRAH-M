@@ -1,23 +1,24 @@
+# --- KODUN BAŞLANGICI ---
+
 import json
 import os
 import uuid
 from typing import List, Dict, Any
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session as flask_session
-from werkzeug.utils import secure_filename
-from openpyxl import load_workbook
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
-
-os.makedirs(DATA_DIR, exist_ok=True)
+# DÜZELTME: Veritabanı dosyasını Vercel'in izin verdiği tek yer olan /tmp klasörüne yazıyoruz.
+SESSIONS_FILE = "/tmp/sessions.json"
 
 
 def load_sessions() -> List[Dict[str, Any]]:
     if not os.path.exists(SESSIONS_FILE):
+        return []
+    # Dosya boşsa hata vermemesi için ek kontrol
+    if os.path.getsize(SESSIONS_FILE) == 0:
         return []
     with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -26,37 +27,6 @@ def load_sessions() -> List[Dict[str, Any]]:
 def save_sessions(sessions: List[Dict[str, Any]]):
     with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
         json.dump(sessions, f, ensure_ascii=False, indent=2)
-
-
-def parse_excel(file_path: str) -> List[Dict[str, Any]]:
-    workbook = load_workbook(filename=file_path)
-    sheet = workbook.active
-    students = []
-
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        if not any(row):
-            continue
-        number = str(row[0]).strip() if row[0] is not None else ""
-        name = str(row[1]).strip() if row[1] is not None else ""
-        department = str(row[2]).strip() if row[2] is not None else ""
-        weeks_raw = row[3:17]
-        attendance: List[bool] = []
-        for cell in weeks_raw:
-            value = str(cell).strip() if cell is not None else ""
-            attendance.append(value == "+")
-        if len(attendance) > 14:
-            attendance = attendance[:14]
-        while len(attendance) < 14:
-            attendance.append(False)
-        students.append(
-            {
-                "number": number,
-                "name": name,
-                "department": department,
-                "attendance": attendance,
-            }
-        )
-    return students
 
 
 @app.route("/")
@@ -73,32 +43,49 @@ def teacher_panel():
 @app.route("/teacher/create", methods=["POST"])
 def create_session():
     session_name = request.form.get("session_name", "").strip()
-    excel_file = request.files.get("excel_file")
+    student_list_raw = request.form.get("student_list", "").strip()
 
     if not session_name:
         flash("Oturum adı gereklidir.", "error")
         return redirect(url_for("teacher_panel"))
 
-    if not excel_file:
-        flash("Excel dosyası yüklenmelidir.", "error")
+    if not student_list_raw:
+        flash("Öğrenci listesi gereklidir.", "error")
         return redirect(url_for("teacher_panel"))
 
-    filename = secure_filename(excel_file.filename)
-    if not filename:
-        flash("Geçerli bir dosya adı gereklidir.", "error")
+    students: List[Dict[str, Any]] = []
+    invalid_lines = []
+
+    for index, line in enumerate(student_list_raw.splitlines(), start=1):
+        if not line.strip():
+            continue
+        parts = [part.strip() for part in line.split(",")]
+        parts = [part for part in parts if part]
+        if len(parts) < 2:
+            invalid_lines.append(index)
+            continue
+        number, name = parts[0], parts[1]
+        department = parts[2] if len(parts) > 2 else ""
+        students.append(
+            {
+                "number": number,
+                "name": name,
+                "department": department,
+                "attendance": [False] * 14,
+            }
+        )
+
+    if invalid_lines:
+        line_text = ", ".join(str(line) for line in invalid_lines)
+        flash(
+            f"Öğrenci listesi satırlarında format hatası var (satırlar: {line_text}). 'Öğrenci Numarası, Adı Soyadı' biçimini kullanın.",
+            "error",
+        )
         return redirect(url_for("teacher_panel"))
 
-    temp_path = os.path.join(DATA_DIR, filename)
-    excel_file.save(temp_path)
-
-    try:
-        students = parse_excel(temp_path)
-    except Exception as exc:  # pylint: disable=broad-except
-        flash(f"Excel dosyası okunamadı: {exc}", "error")
-        os.remove(temp_path)
+    if not students:
+        flash("Geçerli öğrenci bulunamadı.", "error")
         return redirect(url_for("teacher_panel"))
-
-    os.remove(temp_path)
 
     sessions = load_sessions()
     new_session = {
@@ -206,3 +193,5 @@ def inject_enumerate():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
+
+# --- KODUN SONU ---
