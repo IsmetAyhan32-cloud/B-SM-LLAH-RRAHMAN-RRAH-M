@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Oturum Seçimi{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Hoş geldiniz {{ student_number }}</h2>
+  {% if sessions %}
+    <p>Aktif olan oturumlardan birini seçerek yoklamaya katılabilirsiniz.</p>
+    <ul class="session-list">
+      {% for session in sessions %}
+        <li>
+          <form action="{{ url_for('attend_session', session_id=session.id) }}" method="post">
+            <span>{{ session.name }} (Hafta {{ session.active_week }})</span>
+            <button type="submit">Yoklamaya Katıl</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>Şu an aktif oturum bulunmamaktadır.</p>
+  {% endif %}
+</section>
+{% endblock %}
