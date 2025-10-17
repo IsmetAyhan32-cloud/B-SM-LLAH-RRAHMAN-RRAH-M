@@ -3,14 +3,14 @@
 {% block content %}
 <section class="panel">
   <h2>Yeni Oturum Oluştur</h2>
-  <form action="{{ url_for('create_session') }}" method="post" enctype="multipart/form-data" class="form">
+  <form action="{{ url_for('create_session') }}" method="post" class="form">
     <div class="form-group">
       <label for="session_name">Oturum Adı</label>
       <input type="text" id="session_name" name="session_name" placeholder="Örn: Veri Yapıları - 12. Hafta" required>
     </div>
     <div class="form-group">
-      <label for="excel_file">Öğrenci Listesi (Excel)</label>
-      <input type="file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+      <label for="student_list">Öğrenci listesini her satıra 'Öğrenci Numarası, Adı Soyadı' gelecek şekilde yapıştırın.</label>
+      <textarea id="student_list" name="student_list" rows="10" placeholder="123456, Ayşe Yılmaz" required></textarea>
     </div>
     <button type="submit">Oluştur</button>
   </form>
