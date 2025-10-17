@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}Öğretmen Paneli{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Yeni Oturum Oluştur</h2>
+  <form action="{{ url_for('create_session') }}" method="post" enctype="multipart/form-data" class="form">
+    <div class="form-group">
+      <label for="session_name">Oturum Adı</label>
+      <input type="text" id="session_name" name="session_name" placeholder="Örn: Veri Yapıları - 12. Hafta" required>
+    </div>
+    <div class="form-group">
+      <label for="excel_file">Öğrenci Listesi (Excel)</label>
+      <input type="file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+    </div>
+    <button type="submit">Oluştur</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Oturumlar</h2>
+  {% if sessions %}
+    {% for session in sessions %}
+      <article class="session-card">
+        <header class="session-header">
+          <h3>{{ session.name }}</h3>
+          <form action="{{ url_for('update_active_week', session_id=session.id) }}" method="post" class="inline-form">
+            <label for="active_week_{{ session.id }}">Aktif Hafta:</label>
+            <select name="active_week" id="active_week_{{ session.id }}">
+              <option value="" {% if not session.active_week %}selected{% endif %}>Seçili değil</option>
+              {% for week in weeks %}
+                <option value="{{ week }}" {% if session.active_week == week %}selected{% endif %}>Hafta {{ week }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit">Kaydet</button>
+          </form>
+        </header>
+        <div class="table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>Öğrenci No</th>
+                <th>Ad Soyad</th>
+                <th>Bölüm</th>
+                {% for week in weeks %}
+                  <th>H{{ week }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for student in session.students %}
+                <tr>
+                  <td>{{ student.number }}</td>
+                  <td>{{ student.name }}</td>
+                  <td>{{ student.department }}</td>
+                  {% for week_index, attended in enumerate(student.attendance, start=1) %}
+                    <td class="attendance {{ 'attended' if attended else 'absent' }}">{{ '+' if attended else '' }}</td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p>Henüz oturum oluşturulmadı.</p>
+  {% endif %}
+</section>
+{% endblock %}
