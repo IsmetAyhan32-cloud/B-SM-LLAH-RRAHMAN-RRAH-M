@@ -3,10 +3,20 @@ import os
 import uuid
 from typing import List, Dict, Any
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session as flask_session
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    session as flask_session,
+)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
+
+TEACHER_PASSWORD = "12345"
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
@@ -26,9 +36,36 @@ def save_sessions(sessions: List[Dict[str, Any]]):
         json.dump(sessions, f, ensure_ascii=False, indent=2)
 
 
+@app.before_request
+def require_teacher_authentication():
+    protected_prefix = "/teacher"
+    login_endpoint = "teacher_login"
+    if request.path.startswith(protected_prefix) and not request.path.startswith(
+        f"{protected_prefix}/login"
+    ):
+        if not flask_session.get("teacher_authenticated"):
+            return redirect(url_for(login_endpoint))
+
+
 @app.route("/")
 def index():
     return redirect(url_for("teacher_panel"))
+
+
+@app.route("/teacher/login", methods=["GET", "POST"])
+def teacher_login():
+    if flask_session.get("teacher_authenticated"):
+        return redirect(url_for("teacher_panel"))
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if password == TEACHER_PASSWORD:
+            flask_session["teacher_authenticated"] = True
+            flash("Giriş başarılı.", "success")
+            return redirect(url_for("teacher_panel"))
+        flash("Hatalı şifre.", "error")
+
+    return render_template("teacher_login.html")
 
 
 @app.route("/teacher", methods=["GET"])
