@@ -4,20 +4,33 @@ import json
 import os
 import uuid
 from typing import List, Dict, Any
+from functools import wraps # Şifre kontrolü için eklendi
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session as flask_session
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
 
-# DÜZELTME: Veritabanı dosyasını Vercel'in izin verdiği tek yer olan /tmp klasörüne yazıyoruz.
+# GÜVENLİK: Öğretmen şifresini buraya yazıyoruz.
+TEACHER_PASSWORD = "12345" 
+
 SESSIONS_FILE = "/tmp/sessions.json"
+
+
+# GÜVENLİK: Giriş yapılıp yapılmadığını kontrol eden fonksiyon
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "teacher_logged_in" not in flask_session:
+            flash("Bu sayfayı görmek için giriş yapmalısınız.", "error")
+            return redirect(url_for("teacher_login"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def load_sessions() -> List[Dict[str, Any]]:
     if not os.path.exists(SESSIONS_FILE):
         return []
-    # Dosya boşsa hata vermemesi için ek kontrol
     if os.path.getsize(SESSIONS_FILE) == 0:
         return []
     with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
@@ -31,16 +44,43 @@ def save_sessions(sessions: List[Dict[str, Any]]):
 
 @app.route("/")
 def index():
-    return redirect(url_for("teacher_panel"))
+    # Artık ana sayfa, öğrenci girişine yönlendirsin
+    return redirect(url_for("student_login"))
 
 
-@app.route("/teacher", methods=["GET"])
+# GÜVENLİK: Yeni öğretmen giriş sayfası
+@app.route("/teacher/login", methods=["GET", "POST"])
+def teacher_login():
+    if request.method == "POST":
+        password = request.form.get("password")
+        if password == TEACHER_PASSWORD:
+            flask_session["teacher_logged_in"] = True
+            flash("Başarıyla giriş yaptınız.", "success")
+            return redirect(url_for("teacher_panel"))
+        else:
+            flash("Hatalı şifre.", "error")
+            return redirect(url_for("teacher_login"))
+    return render_template("teacher_login.html")
+
+# GÜVENLİK: Yeni öğretmen çıkış sayfası
+@app.route("/teacher/logout")
+def teacher_logout():
+    flask_session.pop("teacher_logged_in", None)
+    flash("Başarıyla çıkış yaptınız.", "info")
+    return redirect(url_for("teacher_login"))
+
+
+# GÜVENLİK: Bu sayfa artık @login_required ile korunuyor
+@app.route("/teacher")
+@login_required 
 def teacher_panel():
     sessions = load_sessions()
     return render_template("teacher.html", sessions=sessions, weeks=list(range(1, 15)))
 
 
+# GÜVENLİK: Bu sayfa artık @login_required ile korunuyor
 @app.route("/teacher/create", methods=["POST"])
+@login_required
 def create_session():
     session_name = request.form.get("session_name", "").strip()
     student_list_raw = request.form.get("student_list", "").strip()
@@ -101,7 +141,9 @@ def create_session():
     return redirect(url_for("teacher_panel"))
 
 
+# GÜVENLİK: Bu sayfa artık @login_required ile korunuyor
 @app.route("/teacher/<session_id>/week", methods=["POST"])
+@login_required
 def update_active_week(session_id: str):
     week_value = request.form.get("active_week")
     sessions = load_sessions()
@@ -126,6 +168,8 @@ def update_active_week(session_id: str):
     flash("Aktif hafta güncellendi.", "success")
     return redirect(url_for("teacher_panel"))
 
+
+# --- ÖĞRENCİ BÖLÜMÜ (Değişiklik yok) ---
 
 @app.route("/student", methods=["GET", "POST"])
 def student_login():
