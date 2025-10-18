@@ -11,13 +11,9 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
 
-# GÜVENLİK: Öğretmen şifresini buraya yazıyoruz.
 TEACHER_PASSWORD = "12345" 
-
 SESSIONS_FILE = "/tmp/sessions.json"
 
-
-# GÜVENLİK: Giriş yapılıp yapılmadığını kontrol eden fonksiyon
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -33,8 +29,12 @@ def load_sessions() -> List[Dict[str, Any]]:
         return []
     if os.path.getsize(SESSIONS_FILE) == 0:
         return []
-    with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        # JSON bozuksa veya boşsa, boş liste döndür
+        return []
 
 
 def save_sessions(sessions: List[Dict[str, Any]]):
@@ -44,11 +44,9 @@ def save_sessions(sessions: List[Dict[str, Any]]):
 
 @app.route("/")
 def index():
-    # Artık ana sayfa, öğrenci girişine yönlendirsin
     return redirect(url_for("student_login"))
 
 
-# GÜVENLİK: Yeni öğretmen giriş sayfası
 @app.route("/teacher/login", methods=["GET", "POST"])
 def teacher_login():
     if request.method == "POST":
@@ -62,7 +60,6 @@ def teacher_login():
             return redirect(url_for("teacher_login"))
     return render_template("teacher_login.html")
 
-# GÜVENLİK: Yeni öğretmen çıkış sayfası
 @app.route("/teacher/logout")
 def teacher_logout():
     flask_session.pop("teacher_logged_in", None)
@@ -70,7 +67,6 @@ def teacher_logout():
     return redirect(url_for("teacher_login"))
 
 
-# GÜVENLİK: Bu sayfa artık @login_required ile korunuyor
 @app.route("/teacher")
 @login_required 
 def teacher_panel():
@@ -78,7 +74,6 @@ def teacher_panel():
     return render_template("teacher.html", sessions=sessions, weeks=list(range(1, 15)))
 
 
-# GÜVENLİK: Bu sayfa artık @login_required ile korunuyor
 @app.route("/teacher/create", methods=["POST"])
 @login_required
 def create_session():
@@ -141,7 +136,6 @@ def create_session():
     return redirect(url_for("teacher_panel"))
 
 
-# GÜVENLİK: Bu sayfa artık @login_required ile korunuyor
 @app.route("/teacher/<session_id>/week", methods=["POST"])
 @login_required
 def update_active_week(session_id: str):
@@ -169,7 +163,26 @@ def update_active_week(session_id: str):
     return redirect(url_for("teacher_panel"))
 
 
-# --- ÖĞRENCİ BÖLÜMÜ (Değişiklik yok) ---
+# YENİ EKLENEN SİLME FONKSİYONU
+@app.route("/teacher/delete/<session_id>", methods=["POST"])
+@login_required
+def delete_session(session_id: str):
+    sessions = load_sessions()
+    
+    # Silinecek oturumu bul ve listeden çıkar
+    sessions_to_keep = [session for session in sessions if session["id"] != session_id]
+    
+    if len(sessions) == len(sessions_to_keep):
+        flash("Silinecek oturum bulunamadı.", "error")
+    else:
+        save_sessions(sessions_to_keep)
+        flash("Oturum başarıyla silindi.", "success")
+        
+    return redirect(url_for("teacher_panel"))
+# SİLME FONKSİYONU SONU
+
+
+# --- ÖĞRENCİ BÖLÜMÜ ---
 
 @app.route("/student", methods=["GET", "POST"])
 def student_login():
