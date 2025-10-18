@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Öğretmen Girişi{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>Öğretmen Girişi</h2>
+  <form method="post" action="{{ url_for('teacher_login') }}" class="form">
+    <div class="form-group">
+      <label for="password">Şifre</label>
+      <input type="password" id="password" name="password" required>
+    </div>
+    <button type="submit">Giriş Yap</button>
+  </form>
+</section>
+{% endblock %}
