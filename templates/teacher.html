@@ -4,7 +4,6 @@
 
 <section class="panel">
   <h2>Yeni Oturum Oluştur</h2>
-  
   <form action="{{ url_for('create_session') }}" method="post" class="form">
     <div class="form-group">
       <label for="session_name">Oturum Adı</label>
@@ -35,7 +34,11 @@
             </select>
             <button type="submit">Kaydet</button>
           </form>
-        </header>
+          
+          <form action="{{ url_for('delete_session', session_id=session.id) }}" method="post" onsubmit="return confirm('Bu oturumu silmek istediğinizden emin misiniz?');" class="inline-form">
+            <button type="submit" style="background-color: #cf222e; margin-left: 10px;">Sil</button>
+          </form>
+          </header>
         <div class="table-responsive">
           <table>
             <thead>
