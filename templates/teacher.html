@@ -1,16 +1,18 @@
 {% extends 'base.html' %}
 {% block title %}Öğretmen Paneli{% endblock %}
 {% block content %}
+
 <section class="panel">
   <h2>Yeni Oturum Oluştur</h2>
-  <form action="{{ url_for('create_session') }}" method="post" enctype="multipart/form-data" class="form">
+  
+  <form action="{{ url_for('create_session') }}" method="post" class="form">
     <div class="form-group">
       <label for="session_name">Oturum Adı</label>
-      <input type="text" id="session_name" name="session_name" placeholder="Örn: Veri Yapıları - 12. Hafta" required>
+      <input type="text" id="session_name" name="session_name" placeholder="Örn: Veri Yapıları" required>
     </div>
     <div class="form-group">
-      <label for="excel_file">Öğrenci Listesi (Excel)</label>
-      <input type="file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+      <label for="student_list">Öğrenci Listesi</label>
+      <textarea id="student_list" name="student_list" rows="10" placeholder="Her satıra bir öğrenci gelecek şekilde yapıştırın:&#10;12345, Ahmet Yılmaz&#10;67890, Zeynep Kaya" required></textarea>
     </div>
     <button type="submit">Oluştur</button>
   </form>
