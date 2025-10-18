@@ -1,7 +1,9 @@
 import json
 import os
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable, Tuple
+
+import fcntl
 
 from flask import (
     Flask,
@@ -34,6 +36,38 @@ def load_sessions() -> List[Dict[str, Any]]:
 def save_sessions(sessions: List[Dict[str, Any]]):
     with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
         json.dump(sessions, f, ensure_ascii=False, indent=2)
+
+
+def update_sessions_atomically(
+    mutator: Callable[[List[Dict[str, Any]]], Tuple[Dict[str, Any], bool]]
+) -> Dict[str, Any]:
+    """Safely mutate sessions data with an exclusive file lock."""
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+    with open(SESSIONS_FILE, "a+", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.seek(0)
+        raw_content = f.read()
+        if raw_content.strip():
+            try:
+                sessions = json.loads(raw_content)
+            except json.JSONDecodeError:
+                sessions = []
+        else:
+            sessions = []
+
+        result, should_persist = mutator(sessions)
+
+        if should_persist:
+            f.seek(0)
+            json.dump(sessions, f, ensure_ascii=False, indent=2)
+            f.truncate()
+            f.flush()
+            os.fsync(f.fileno())
+
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+    return result
 
 
 @app.before_request
@@ -194,28 +228,46 @@ def attend_session(session_id: str):
         flash("Giriş yapılmadı.", "error")
         return redirect(url_for("student_login"))
 
-    sessions = load_sessions()
-    target_session = next((session for session in sessions if session["id"] == session_id), None)
+    def mark_attendance(sessions: List[Dict[str, Any]]):
+        target_session = next(
+            (session for session in sessions if session["id"] == session_id),
+            None,
+        )
+        if not target_session:
+            return {"status": "session_missing"}, False
 
-    if not target_session:
+        active_week = target_session.get("active_week")
+        if not active_week:
+            return {"status": "no_active_week"}, False
+
+        student_entry = next(
+            (student for student in target_session["students"] if student["number"] == student_number),
+            None,
+        )
+        if not student_entry:
+            return {"status": "student_missing"}, False
+
+        week_index = active_week - 1
+        if 0 <= week_index < len(student_entry.get("attendance", [])):
+            student_entry["attendance"][week_index] = True
+            return {"status": "success"}, True
+
+        return {"status": "invalid_week_index"}, False
+
+    result = update_sessions_atomically(mark_attendance)
+
+    status = result.get("status")
+    if status == "success":
+        flash("Yoklama işleminiz alındı.", "success")
+    elif status == "session_missing":
         flash("Oturum bulunamadı.", "error")
-        return redirect(url_for("student_sessions"))
-
-    active_week = target_session.get("active_week")
-    if not active_week:
+    elif status == "no_active_week":
         flash("Bu oturum için aktif hafta ayarlanmamış.", "error")
-        return redirect(url_for("student_sessions"))
-
-    student_entry = next((student for student in target_session["students"] if student["number"] == student_number), None)
-    if not student_entry:
+    elif status == "student_missing":
         flash("Öğrenci listede bulunamadı.", "error")
-        return redirect(url_for("student_sessions"))
+    else:
+        flash("Yoklama kaydedilirken bir hata oluştu.", "error")
 
-    week_index = active_week - 1
-    student_entry["attendance"][week_index] = True
-    save_sessions(sessions)
-
-    flash("Yoklama işleminiz alındı.", "success")
     return redirect(url_for("student_sessions"))
 
 
