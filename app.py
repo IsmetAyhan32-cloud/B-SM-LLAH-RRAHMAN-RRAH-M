@@ -4,15 +4,38 @@ import json
 import os
 import uuid
 from typing import List, Dict, Any
-from functools import wraps # Şifre kontrolü için eklendi
-
+from functools import wraps 
 from flask import Flask, render_template, request, redirect, url_for, flash, session as flask_session
+
+# YENİ KÜTÜPHANE: Vercel KV veritabanı için eklendi
+from vercel_kv import kv
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
 
 TEACHER_PASSWORD = "12345" 
-SESSIONS_FILE = "/tmp/sessions.json"
+
+# YENİ BAĞLANTI: Veritabanına bağlanıyoruz (ayarları otomatik çeker)
+kv_store = kv()
+
+# YENİ FONKSİYON: Artık veriyi /tmp'den değil, Vercel KV'den okuyoruz
+def load_sessions() -> List[Dict[str, Any]]:
+    # 'sessions_data' anahtarı altındaki tüm veriyi çek
+    data = kv_store.get('sessions_data')
+    if data is None:
+        # Eğer veritabanı boşsa (ilk çalıştırma), boş liste döndür
+        return []
+    return data
+
+# YENİ FONKSİYON: Artık veriyi /tmp'ye değil, Vercel KV'ye yazıyoruz
+def save_sessions(sessions: List[Dict[str, Any]]):
+    # Tüm oturum listesini 'sessions_data' anahtarı altına kaydet
+    kv_store.set('sessions_data', sessions)
+
+
+# --- GERİ KALAN TÜM KODLARIN DEĞİŞMESİNE GEREK YOK ---
+# (Sadece load/save fonksiyonlarını değiştirmemiz yetti)
+
 
 def login_required(f):
     @wraps(f)
@@ -23,29 +46,9 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
-def load_sessions() -> List[Dict[str, Any]]:
-    if not os.path.exists(SESSIONS_FILE):
-        return []
-    if os.path.getsize(SESSIONS_FILE) == 0:
-        return []
-    try:
-        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        # JSON bozuksa veya boşsa, boş liste döndür
-        return []
-
-
-def save_sessions(sessions: List[Dict[str, Any]]):
-    with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
-        json.dump(sessions, f, ensure_ascii=False, indent=2)
-
-
 @app.route("/")
 def index():
     return redirect(url_for("student_login"))
-
 
 @app.route("/teacher/login", methods=["GET", "POST"])
 def teacher_login():
@@ -66,13 +69,11 @@ def teacher_logout():
     flash("Başarıyla çıkış yaptınız.", "info")
     return redirect(url_for("teacher_login"))
 
-
 @app.route("/teacher")
 @login_required 
 def teacher_panel():
     sessions = load_sessions()
     return render_template("teacher.html", sessions=sessions, weeks=list(range(1, 15)))
-
 
 @app.route("/teacher/create", methods=["POST"])
 @login_required
@@ -135,7 +136,6 @@ def create_session():
     flash("Oturum başarıyla oluşturuldu.", "success")
     return redirect(url_for("teacher_panel"))
 
-
 @app.route("/teacher/<session_id>/week", methods=["POST"])
 @login_required
 def update_active_week(session_id: str):
@@ -163,13 +163,10 @@ def update_active_week(session_id: str):
     return redirect(url_for("teacher_panel"))
 
 
-# YENİ EKLENEN SİLME FONKSİYONU
 @app.route("/teacher/delete/<session_id>", methods=["POST"])
 @login_required
 def delete_session(session_id: str):
     sessions = load_sessions()
-    
-    # Silinecek oturumu bul ve listeden çıkar
     sessions_to_keep = [session for session in sessions if session["id"] != session_id]
     
     if len(sessions) == len(sessions_to_keep):
@@ -179,10 +176,8 @@ def delete_session(session_id: str):
         flash("Oturum başarıyla silindi.", "success")
         
     return redirect(url_for("teacher_panel"))
-# SİLME FONKSİYONU SONU
 
-
-# --- ÖĞRENCİ BÖLÜMÜ ---
+# --- ÖĞRENCİ BÖLÜMÜ (Değişiklik yok) ---
 
 @app.route("/student", methods=["GET", "POST"])
 def student_login():
