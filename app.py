@@ -4,34 +4,43 @@ import json
 import os
 import uuid
 from typing import List, Dict, Any
-from functools import wraps 
+from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session as flask_session
 
-# YENİ KÜTÜPHANE: Vercel KV veritabanı için eklendi (HARF HATASI DÜZELTİLDİ)
+# DOĞRU KÜTÜPHANE İÇİN İMPORT
 from vercel_kv import KV
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
 
-TEACHER_PASSWORD = "12345" 
+TEACHER_PASSWORD = "12345"
 
-# YENİ BAĞLANTI: Veritabanına bağlanıyoruz (HARF HATASI DÜZELTİLDİ)
+# VERİTABANI BAĞLANTISI (Doğru şekilde)
 kv_store = KV()
 
-# YENİ FONKSİYON: Artık veriyi /tmp'den değil, Vercel KV'den okuyoruz
+# Veritabanından okuma fonksiyonu
 def load_sessions() -> List[Dict[str, Any]]:
-    # 'sessions_data' anahtarı altındaki tüm veriyi çek
-    data = kv_store.get('sessions_data')
-    if data is None:
-        # Eğer veritabanı boşsa (ilk çalıştırma), boş liste döndür
+    try:
+        data = kv_store.get('sessions_data')
+        if data is None:
+            return []
+        # Verinin liste olduğunu varsayıyoruz, değilse boş liste döndür
+        return data if isinstance(data, list) else []
+    except Exception as e:
+        # Veritabanı okuma hatası olursa logla (Vercel loglarında görünür)
+        # ve boş liste döndürerek sitenin çökmesini engelle
+        print(f"Error loading sessions from KV: {e}")
+        flash("Veritabanından oturumlar yüklenirken bir hata oluştu.", "error")
         return []
-    return data
 
-# YENİ FONKSİYON: Artık veriyi /tmp'ye değil, Vercel KV'ye yazıyoruz
+# Veritabanına yazma fonksiyonu
 def save_sessions(sessions: List[Dict[str, Any]]):
-    # Tüm oturum listesini 'sessions_data' anahtarı altına kaydet
-    kv_store.set('sessions_data', sessions)
-
+    try:
+        kv_store.set('sessions_data', sessions)
+    except Exception as e:
+        # Veritabanı yazma hatası olursa logla ve kullanıcıyı uyar
+        print(f"Error saving sessions to KV: {e}")
+        flash("Veritabanına oturumlar kaydedilirken bir hata oluştu.", "error")
 
 # --- GERİ KALAN TÜM KODLAR AYNI ---
 
@@ -68,7 +77,7 @@ def teacher_logout():
     return redirect(url_for("teacher_login"))
 
 @app.route("/teacher")
-@login_required 
+@login_required
 def teacher_panel():
     sessions = load_sessions()
     return render_template("teacher.html", sessions=sessions, weeks=list(range(1, 15)))
@@ -150,7 +159,7 @@ def update_active_week(session_id: str):
                     session_data["active_week"] = week_number
                 except ValueError:
                     flash("Hafta değeri 1-14 arasında olmalıdır.", "error")
-                    save_sessions(sessions)
+                    save_sessions(sessions) # Hata olsa bile kaydetmeyi dene
                     return redirect(url_for("teacher_panel"))
             else:
                 session_data["active_week"] = None
@@ -160,19 +169,18 @@ def update_active_week(session_id: str):
     flash("Aktif hafta güncellendi.", "success")
     return redirect(url_for("teacher_panel"))
 
-
 @app.route("/teacher/delete/<session_id>", methods=["POST"])
 @login_required
 def delete_session(session_id: str):
     sessions = load_sessions()
     sessions_to_keep = [session for session in sessions if session["id"] != session_id]
-    
+
     if len(sessions) == len(sessions_to_keep):
         flash("Silinecek oturum bulunamadı.", "error")
     else:
         save_sessions(sessions_to_keep)
         flash("Oturum başarıyla silindi.", "success")
-        
+
     return redirect(url_for("teacher_panel"))
 
 @app.route("/student", methods=["GET", "POST"])
@@ -189,7 +197,6 @@ def student_login():
 
     return render_template("student_login.html")
 
-
 @app.route("/student/sessions", methods=["GET"])
 def student_sessions():
     student_number = flask_session.get("student_number")
@@ -199,7 +206,6 @@ def student_sessions():
 
     sessions = [session for session in load_sessions() if session.get("active_week")]
     return render_template("student_sessions.html", sessions=sessions, student_number=student_number)
-
 
 @app.route("/student/sessions/<session_id>/attend", methods=["POST"])
 def attend_session(session_id: str):
@@ -226,21 +232,21 @@ def attend_session(session_id: str):
         return redirect(url_for("student_sessions"))
 
     week_index = active_week - 1
+    # Yoklamanın zaten alınıp alınmadığını kontrol etmeye gerek yok, üzerine yazsın
     student_entry["attendance"][week_index] = True
     save_sessions(sessions)
 
     flash("Yoklama işleminiz alındı.", "success")
     return redirect(url_for("student_sessions"))
 
-
 @app.context_processor
 def inject_enumerate():
     return {"enumerate": enumerate}
 
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # Debug modunu Vercel'de kapatmak daha iyidir
+    app.run(host="0.0.0.0", port=port, debug=False)
 
+# Vercel'i yeni deploy'a zorla (Bu yorum satırı kalabilir)
 # --- KODUN SONU ---
-# Vercel'i yeni deploy'a zorla
