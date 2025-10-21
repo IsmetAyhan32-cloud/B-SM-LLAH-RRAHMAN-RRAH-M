@@ -7,16 +7,16 @@ from typing import List, Dict, Any
 from functools import wraps 
 from flask import Flask, render_template, request, redirect, url_for, flash, session as flask_session
 
-# YENİ KÜTÜPHANE: Vercel KV veritabanı için eklendi
-from vercel_kv import kv
+# YENİ KÜTÜPHANE: Vercel KV veritabanı için eklendi (HARF HATASI DÜZELTİLDİ)
+from vercel_kv import KV
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
 
 TEACHER_PASSWORD = "12345" 
 
-# YENİ BAĞLANTI: Veritabanına bağlanıyoruz (ayarları otomatik çeker)
-kv_store = kv()
+# YENİ BAĞLANTI: Veritabanına bağlanıyoruz (HARF HATASI DÜZELTİLDİ)
+kv_store = KV()
 
 # YENİ FONKSİYON: Artık veriyi /tmp'den değil, Vercel KV'den okuyoruz
 def load_sessions() -> List[Dict[str, Any]]:
@@ -33,9 +33,7 @@ def save_sessions(sessions: List[Dict[str, Any]]):
     kv_store.set('sessions_data', sessions)
 
 
-# --- GERİ KALAN TÜM KODLARIN DEĞİŞMESİNE GEREK YOK ---
-# (Sadece load/save fonksiyonlarını değiştirmemiz yetti)
-
+# --- GERİ KALAN TÜM KODLAR AYNI ---
 
 def login_required(f):
     @wraps(f)
@@ -176,8 +174,6 @@ def delete_session(session_id: str):
         flash("Oturum başarıyla silindi.", "success")
         
     return redirect(url_for("teacher_panel"))
-
-# --- ÖĞRENCİ BÖLÜMÜ (Değişiklik yok) ---
 
 @app.route("/student", methods=["GET", "POST"])
 def student_login():
