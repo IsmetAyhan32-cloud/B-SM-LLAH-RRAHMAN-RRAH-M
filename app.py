@@ -7,40 +7,37 @@ from typing import List, Dict, Any
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session as flask_session
 
-# DOĞRU KÜTÜPHANE İÇİN İMPORT
-from vercel_kv import KV
-
 app = Flask(__name__)
 app.secret_key = os.environ.get("ATTENDANCE_APP_SECRET", "dev-secret-key")
 
 TEACHER_PASSWORD = "12345"
 
-# VERİTABANI BAĞLANTISI (Doğru şekilde)
-kv_store = KV()
+# ESKİ YÖNTEM: Veritabanı dosyasını /tmp klasörüne kaydediyoruz.
+SESSIONS_FILE = "/tmp/sessions.json"
 
-# Veritabanından okuma fonksiyonu
+
+# ESKİ YÖNTEM: /tmp'den okuma
 def load_sessions() -> List[Dict[str, Any]]:
+    if not os.path.exists(SESSIONS_FILE):
+        return []
+    # Dosya boşsa veya JSON bozuksa hata vermemesi için ek kontrol
     try:
-        data = kv_store.get('sessions_data')
-        if data is None:
+        if os.path.getsize(SESSIONS_FILE) == 0:
             return []
-        # Verinin liste olduğunu varsayıyoruz, değilse boş liste döndür
-        return data if isinstance(data, list) else []
-    except Exception as e:
-        # Veritabanı okuma hatası olursa logla (Vercel loglarında görünür)
-        # ve boş liste döndürerek sitenin çökmesini engelle
-        print(f"Error loading sessions from KV: {e}")
-        flash("Veritabanından oturumlar yüklenirken bir hata oluştu.", "error")
+        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
         return []
 
-# Veritabanına yazma fonksiyonu
+# ESKİ YÖNTEM: /tmp'ye yazma
 def save_sessions(sessions: List[Dict[str, Any]]):
     try:
-        kv_store.set('sessions_data', sessions)
-    except Exception as e:
-        # Veritabanı yazma hatası olursa logla ve kullanıcıyı uyar
-        print(f"Error saving sessions to KV: {e}")
-        flash("Veritabanına oturumlar kaydedilirken bir hata oluştu.", "error")
+        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(sessions, f, ensure_ascii=False, indent=2)
+    except IOError as e:
+        print(f"Error saving sessions to /tmp: {e}")
+        flash("Oturumlar kaydedilirken bir hata oluştu.", "error")
+
 
 # --- GERİ KALAN TÜM KODLAR AYNI ---
 
@@ -232,7 +229,6 @@ def attend_session(session_id: str):
         return redirect(url_for("student_sessions"))
 
     week_index = active_week - 1
-    # Yoklamanın zaten alınıp alınmadığını kontrol etmeye gerek yok, üzerine yazsın
     student_entry["attendance"][week_index] = True
     save_sessions(sessions)
 
@@ -245,7 +241,6 @@ def inject_enumerate():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    # Debug modunu Vercel'de kapatmak daha iyidir
     app.run(host="0.0.0.0", port=port, debug=False)
 
 # Vercel'i yeni deploy'a zorla (Bu yorum satırı kalabilir)
